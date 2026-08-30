@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * Alinx AX7020 (XC7Z020-2CLG400)
+ *
+ * PS configuration derived from the Alinx linux_base Vivado project
+ * (design_1.hwh) and the AX7020 V2.0 schematic:
+ *   DDR3   2x MT41J256M16, 32-bit, 533 MHz  -> 1 GiB
+ *   QSPI   W25Q256 single, MIO 1..6
+ *   UART1  MIO 48..49 (CP2102 USB-UART)
+ *   GEM0   RGMII MIO 16..27, MDIO MIO 52..53, RTL8211E-VL at PHY addr 1
+ *   SD0    MIO 40..45, card detect MIO 47
+ *   USB0   ULPI MIO 28..39, reset MIO 46 (active low)
+ */
+/dts-v1/;
+#include "zynq-7000.dtsi"
+
+/ {
+	model = "Alinx AX7020 board";
+	compatible = "alinx,zynq-ax7020", "xlnx,zynq-7000";
+
+	aliases {
+		ethernet0 = &gem0;
+		serial0 = &uart1;
+		spi0 = &qspi;
+		mmc0 = &sdhci0;
+	};
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x40000000>;
+	};
+
+	chosen {
+		bootargs = "";
+		stdout-path = "serial0:115200n8";
+	};
+
+	usb_phy0: phy0 {
+		#phy-cells = <0>;
+		compatible = "usb-nop-xceiv";
+		reset-gpios = <&gpio0 46 1>;
+	};
+};
+
+&clkc {
+	ps-clk-frequency = <33333333>;
+};
+
+&gem0 {
+	status = "okay";
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethernet_phy>;
+
+	ethernet_phy: ethernet-phy@1 {
+		reg = <1>;
+	};
+};
+
+&qspi {
+	bootph-all;
+	status = "okay";
+	num-cs = <1>;
+	flash@0 {
+		bootph-all;
+		compatible = "w25q256", "jedec,spi-nor";
+		reg = <0>;
+		/* Quad read (0x6B) comes back 3 bytes offset in SPL on this
+		 * board, which corrupts the image u-boot-spl loads from
+		 * QSPI. Plain single-bit READ is correct. */
+		spi-tx-bus-width = <1>;
+		spi-rx-bus-width = <1>;
+		/* 200 MHz QSPI ref clock is halved in powers of two: 50 MHz reads
+		 * corrupt on this board, 25 MHz is the proven-good rate. */
+		spi-max-frequency = <25000000>;
+	};
+};
+
+&sdhci0 {
+	bootph-all;
+	status = "okay";
+};
+
+&uart1 {
+	bootph-all;
+	status = "okay";
+};
+
+&usb0 {
+	status = "okay";
+	dr_mode = "host";
+	usb-phy = <&usb_phy0>;
+};
