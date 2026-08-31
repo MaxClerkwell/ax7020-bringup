@@ -11,6 +11,7 @@ checkpoints and the nine detours it took to get there, is on my blog:
 
 - [Deploying Hardware Like Software: A Bitstream Pipeline for the Zynq](https://maxclerkwell.tech/posts/zynq-bitstream-deployment-concept-august-2026/) — the plan
 - [ALINX AX7020 Bring-up: Mainline U-Boot Over JTAG, No FSBL, No Serial Cable](https://maxclerkwell.tech/posts/alinx-bring-up-jtag-detected-without-power-august-2026/) — Stage 1, which this repository accompanies
+- [ALINX AX7020, Stages 2 & 3: A Yocto Linux in QSPI Flash That Fetches Its Own Updates](https://maxclerkwell.tech/posts/alinx-ax7020-yocto-linux-qspi-august-2026/) — the Linux that now lives in the flash
 
 ## Contents
 
@@ -69,6 +70,12 @@ Then talk to the board over Ethernet:
 ```bash
 tools/ncsh.py <board-ip> "bdinfo" "sf probe 0 30000000 0"
 ```
+
+## Commercial work
+
+I do this professionally: commercial board bring-up, custom Zynq/FPGA
+boards, embedded Linux and DAQ systems as a freelancer —
+[maxclerkwell.tech/hire](https://maxclerkwell.tech/hire/).
 
 ## Links
 
