@@ -1,0 +1,21 @@
+# build products and vendor material stay out of the repo
+build/
+AX7020_2023.1/
+tftp/
+backup/
+netconsole.log
+# Yocto: upstream layers and build tree live next to meta-ax7020, not in git
+yocto/poky/
+yocto/meta-xilinx/
+yocto/meta-arm/
+yocto/meta-openembedded/
+yocto/build/
+yocto/downloads/
+yocto/sstate-cache/
+# open-toolchain artefacts (make regenerates them)
+bitstream/*/*.json
+bitstream/*/*.fasm
+bitstream/*/*.frames
+bitstream/*/*.bit
+bitstream/*/*.bin
+__pycache__/

@@ -1,0 +1,95 @@
+#!/bin/sh
+# Fetch a Yocto image over the network and boot into it with kexec.
+#
+# The maintenance system in flash never changes; whatever is being developed
+# arrives over the network and lives in RAM only. If anything here fails we
+# stay in the maintenance system, which is reachable over SSH - that is the
+# whole point of keeping this separate.
+#
+# kexec-tools on 32-bit ARM cannot boot a FIT image (its zImage probe accepts
+# any file and jumps into it - the board dies, see docs/). So the image is
+# published as three files plus a manifest that names them:
+#
+#   kernel  <file>  <sha256>
+#   dtb     <file>  <sha256>
+#   initrd  <file>  <sha256>
+#
+# File names in the manifest are relative to the manifest's URL.
+
+set -u
+
+CONF=/etc/ax7020-update.conf
+[ -r "$CONF" ] && . "$CONF"
+
+IMAGE_URL="${IMAGE_URL:-}"          # URL of the manifest
+NTP_SERVER="${NTP_SERVER:-pool.ntp.org}"
+WORK="${WORK:-/tmp/ax7020-update}"
+CURL_OPTS="${CURL_OPTS:-}"
+CMDLINE="${CMDLINE:-$(cat /proc/cmdline)}"
+
+log() { echo "ax7020-update: $*"; }
+die() { log "ERROR: $*"; exit 1; }
+
+[ -n "$IMAGE_URL" ] || die "no IMAGE_URL configured, see $CONF"
+BASE="${IMAGE_URL%/*}"
+
+# --- clock ---------------------------------------------------------------
+# No usable RTC on this board (I2C is on EMIO, behind the PL), so the clock
+# starts in 1970 and every certificate looks "not yet valid".
+case "$IMAGE_URL" in
+https://*)
+    log "setting clock from $NTP_SERVER"
+    ntpd -n -q -p "$NTP_SERVER" >/dev/null 2>&1 \
+        || die "could not set the clock; HTTPS would fail on certificate dates"
+    log "clock is now $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+    ;;
+esac
+
+# --- fetch ---------------------------------------------------------------
+rm -rf "$WORK"; mkdir -p "$WORK" || die "cannot create $WORK"
+
+fetch() {  # fetch <url> <dest>
+    # shellcheck disable=SC2086
+    curl -fsSL --connect-timeout 10 --retry 3 $CURL_OPTS -o "$2" "$1" \
+        || die "download failed: $1"
+}
+
+log "fetching manifest $IMAGE_URL"
+fetch "$IMAGE_URL" "$WORK/manifest"
+
+KERNEL=""; DTB=""; INITRD=""
+while read -r kind file sha rest; do
+    case "$kind" in ""|\#*) continue ;; esac
+    [ -n "$file" ] && [ -n "$sha" ] || die "bad manifest line: $kind $file $sha"
+    log "fetching $file"
+    fetch "$BASE/$file" "$WORK/$kind"
+    actual=$(sha256sum "$WORK/$kind" | cut -d' ' -f1)
+    [ "$actual" = "$sha" ] || die "checksum mismatch for $file: $actual"
+    log "$kind: $(wc -c < "$WORK/$kind") bytes, checksum ok"
+    case "$kind" in
+        kernel) KERNEL=$WORK/kernel ;;
+        dtb)    DTB=$WORK/dtb ;;
+        initrd) INITRD=$WORK/initrd ;;
+        *) die "unknown manifest entry: $kind" ;;
+    esac
+done < "$WORK/manifest"
+
+[ -n "$KERNEL" ] || die "manifest names no kernel"
+[ -n "$DTB" ]    || die "manifest names no dtb"
+
+# Sanity: zImage magic at 0x24, DTB magic at 0 - a captive portal or an error
+# page must not reach kexec, which would jump into it without complaint.
+[ "$(od -An -tx1 -j 0x24 -N4 "$KERNEL" | tr -d ' \n')" = "18286f01" ] \
+    || die "kernel is not a zImage"
+[ "$(od -An -tx1 -N4 "$DTB" | tr -d ' \n')" = "d00dfeed" ] \
+    || die "dtb is not a device tree blob"
+
+# --- boot ----------------------------------------------------------------
+log "loading with kexec"
+set -- -l "$KERNEL" --dtb="$DTB" --command-line="$CMDLINE"
+[ -n "$INITRD" ] && set -- "$@" --initrd="$INITRD"
+kexec "$@" || die "kexec -l failed"
+[ "${DRY_RUN:-0}" = 1 ] && { log "dry run, not executing"; exit 0; }
+log "handing over - this system stops here"
+sync
+kexec -e

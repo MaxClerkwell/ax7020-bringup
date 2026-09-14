@@ -1,0 +1,8 @@
+# Key authentication only.
+#
+#   -s  disable password logins entirely
+#
+# Note that poky's stock file passes "-w", which forbids root logins outright.
+# This board is reached as root over a key, so -w must not be set; -s alone
+# still rejects every password attempt, including an empty one.
+DROPBEAR_EXTRA_ARGS="-s"

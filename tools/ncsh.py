@@ -47,10 +47,22 @@ def main():
                 pass
         return ESC.sub("", got.decode(errors="replace"))
 
-    def run(cmd):
-        for c in cmd + "\n":
-            s.sendto(c.encode(), board); time.sleep(GAP)
-        return drain()
+    def run(cmd, attempts=3):
+        """Send one command and confirm U-Boot echoed it back.
+
+        The netconsole drops input characters now and then. A mangled command
+        turns into "Unknown command" - harmless for a query, but a truncated
+        "sf write" silently writes nothing while looking like it worked. So
+        check the echo and resend if the command did not arrive intact.
+        """
+        for attempt in range(attempts):
+            for c in cmd + "\n":
+                s.sendto(c.encode(), board); time.sleep(GAP)
+            out = drain()
+            if cmd in out or "Unknown command" not in out:
+                return out
+            sys.stderr.write(f"ncsh: command mangled, resending: {cmd}\n")
+        return out
 
     cmds = sys.argv[2:]
     if cmds:

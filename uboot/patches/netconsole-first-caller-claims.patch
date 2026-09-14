@@ -1,0 +1,31 @@
+diff --git a/drivers/net/netconsole.c b/drivers/net/netconsole.c
+index c2ce4a80..9acc8857 100644
+--- a/drivers/net/netconsole.c
++++ b/drivers/net/netconsole.c
+@@ -145,6 +145,26 @@ int nc_input_packet(uchar *pkt, struct in_addr src_ip, unsigned dest_port,
+ 	if (src_ip.s_addr != nc_ip.s_addr && !is_broadcast(nc_ip))
+ 		return 0; /* not from our client */
+ 
++	/*
++	 * First caller claims the console.
++	 *
++	 * Out of reset ncip is the broadcast address, so the board answers
++	 * anyone on the segment. As soon as somebody actually types, pin the
++	 * console to them: writing ncip bumps the environment id, so
++	 * refresh_settings_from_env() picks the address up on the next send
++	 * and the filter above rejects everybody else from here on.
++	 *
++	 * The claim lives in the environment only, never in flash, so a reboot
++	 * releases it. The owner can hand the board back with
++	 * "setenv ncip 255.255.255.255".
++	 */
++	if (is_broadcast(nc_ip)) {
++		char claimed[16];
++
++		snprintf(claimed, sizeof(claimed), "%pI4", &src_ip);
++		env_set("ncip", claimed);
++	}
++
+ 	debug_cond(DEBUG_DEV_PKT, "input: \"%*.*s\"\n", len, len, pkt);
+ 
+ 	if (input_size == sizeof(input_buffer))
