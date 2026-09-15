@@ -1,0 +1,16 @@
+[Unit]
+Description=AX7020 bitstream service (FastAPI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ax7020-api
+# packaged fastapi/uvicorn, no venv, works offline and starts in seconds;
+# uv is on the box for development (uv run --with ... ) but not in this path
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

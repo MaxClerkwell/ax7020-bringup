@@ -22,9 +22,9 @@ checkpoints and the nine detours it took to get there, is on my blog:
 | 2 | Image server on the lab network | **done, 2026-09-10** — HTTP manifest + kexec, see *Stage 2* below |
 | 3 | Linux for the board | **done, 2026-08-31** — Yocto maintenance system in QSPI, key-only SSH |
 | 4 | Bitstream from an open toolchain | **done, 2026-09-10** — see [`docs/walkthrough-stage4-first-load.md`](docs/walkthrough-stage4-first-load.md) |
-| 5 | REST API that accepts a bitstream and loads it onto the FPGA | **runs, by hand, 2026-09-14** — see [`docs/walkthrough-stage5-manual.md`](docs/walkthrough-stage5-manual.md) and [`api/`](api/README.md) |
+| 5 | REST API that accepts a bitstream and loads it onto the FPGA | **done, 2026-09-15** — systemd service in `ax7020-api-image`, fetched from the image server; see [`api/`](api/README.md) and [`docs/walkthrough-stage5-manual.md`](docs/walkthrough-stage5-manual.md) |
 
-The four German walkthroughs under `docs/` are the session logs, detours included.
+The five German walkthroughs under `docs/` are the session logs, detours included.
 
 ## What is deliberately not here
 
@@ -747,32 +747,60 @@ and boots into them with kexec. Nothing in flash changes; a broken image costs
 a power cycle, not a reflash. Session notes in
 [`docs/walkthrough-stage2-kexec.md`](docs/walkthrough-stage2-kexec.md).
 
+### The image server
+
+An nginx container on the lab router `AI-heimdall` serves `/srv/ax7020-images`
+on `http://10.42.0.1:8080/`, bound to the LAN address only:
+
+```bash
+docker run -d --name ax7020-image-server --restart unless-stopped \
+  -p 10.42.0.1:8080:80 \
+  -v /srv/ax7020-images:/usr/share/nginx/html:ro \
+  -v /etc/ax7020-image-server/default.conf:/etc/nginx/conf.d/default.conf:ro \
+  --read-only --tmpfs /var/cache/nginx --tmpfs /var/run --tmpfs /tmp nginx:alpine
+```
+
+(`default.conf`: `autoindex on; disable_symlinks off;`.) Every build lands in
+its own directory; `ax7020-latest` is a symlink that always points at the
+newest one, so the board only ever knows one URL:
+
+```
+/srv/ax7020-images/
+  20260914-203000-ax7020-api-image/   zImage  zynq-ax7020.dtb  initramfs.cpio.gz  manifest
+  ax7020-latest -> 20260914-203000-ax7020-api-image
+```
+
 ### Publishing an image
 
 ```bash
-tools/publish-image.sh build/images        # from yocto/build/tmp/deploy/images/ax7020
-cd build/images && python3 -m http.server 8080 --bind 10.42.100.20
+tools/publish-image.sh AI-heimdall:/srv/ax7020-images                  # API image (default)
+tools/publish-image.sh -i ax7020-initramfs AI-heimdall:/srv/ax7020-images   # maintenance image
+tools/publish-image.sh build/images                                    # local web root instead
 ```
 
-`publish-image.sh` copies zImage, DTB and `cpio.gz` under a timestamp, writes
-`<stamp>.manifest` and points `latest.manifest` at it:
+The script copies zImage, DTB and `cpio.gz` from the Yocto deploy directory
+under a timestamp, writes the manifest and repoints `ax7020-latest`:
 
 ```
-kernel zImage-20260910-105035            542ef58f…
-dtb    zynq-ax7020-20260910-105035.dtb   1e3fa9c7…
-initrd initramfs-20260910-105035.cpio.gz fbce1304…
+kernel zImage             542ef58f…
+dtb    zynq-ax7020.dtb    1e3fa9c7…
+initrd initramfs.cpio.gz  4e73ba34…
 ```
 
-Any static web server does; file names are resolved relative to the manifest
-URL, so a Nextcloud share works as well as `python3 -m http.server`.
+File names are resolved relative to the manifest URL, so any static web
+server works.
 
 ### On the board
 
-`/etc/ax7020-update.conf` names the manifest:
+`/etc/ax7020-update.conf` names the manifest; the recipe's default is the
+router:
 
 ```
-IMAGE_URL="http://10.42.100.20:8080/latest.manifest"
+IMAGE_URL="http://10.42.0.1:8080/ax7020-latest/manifest"
 ```
+
+Only the maintenance image carries the updater. The API image deliberately
+does not: with `IMAGE_URL` set it would kexec into itself forever.
 
 `ax7020-update` (recipe `recipes-support/ax7020-updater`) fetches the three
 files, checks every SHA256, checks the zImage magic at offset 0x24 and the DTB
@@ -785,9 +813,10 @@ kernel:
 CMDLINE="console=ttyPS0,115200 ip=dhcp netconsole=6666@10.42.100.134/eth0,6666@10.42.100.20/<host-mac>"
 ```
 
-An init script (`rc5`, priority 99) runs the updater 15 s after boot when
-`IMAGE_URL` is set, detached, output to `/dev/kmsg`. With an empty
-`IMAGE_URL` the board simply stays in the maintenance system.
+`ax7020-update.service` (systemd, oneshot, after `network-online.target`,
+15 s grace) runs the updater once per boot. With an empty `IMAGE_URL`, or
+when the server is unreachable, the board simply stays in the maintenance
+system.
 
 Measured hand-over: `kexec -e` at 13:03:22, new kernel's first line 13:03:28,
 SSH back 13:03:45.
@@ -897,6 +926,58 @@ about writes issued through the CPU, debug access survived this.
 
 ---
 
+## Stage 5 — the bitstream service as an image
+
+Reached 2026-09-15. `ax7020-api-image` is what the maintenance system fetches
+from the image server and starts with kexec: Python 3.12, FastAPI, uvicorn,
+`uv`, and `ax7020-api.service` under systemd. First request answered 36 s
+after `kexec -e`. The first, hand-assembled version of the same thing is in
+[`docs/walkthrough-stage5-manual.md`](docs/walkthrough-stage5-manual.md).
+
+```
+Flash: maintenance image ──ax7020-update.service──▶ 10.42.0.1:8080/ax7020-latest/manifest
+                                                            │ kexec, ~6 s
+                                                            ▼
+                                            ax7020-api-image in RAM: systemd → ax7020-api.service :8000
+                                                            │ POST /bitstream
+                                                            ▼
+                                                     /sys/class/fpga_manager/fpga0
+```
+
+### Recipes (`yocto/meta-ax7020`)
+
+| Recipe | What |
+|---|---|
+| `classes/pypi-wheel.bbclass` | installs a `py3-none-any` wheel by unzipping it into site-packages — scarthgap has no `pdm-backend` class and fastapi needs one, and for pure-Python wheels a build step adds nothing |
+| `python3-fastapi`, `-starlette`, `-uvicorn`, `-click`, `-python-multipart` | the pure-Python part of the stack, as wheels; `pydantic`, `anyio`, `h11` come from meta-python |
+| `uv` | astral's prebuilt static `armv7-musl` binary, sha256-pinned; on the box for `uv run --with …` experiments, not in the service's start path (it would fetch packages on every boot) |
+| `ax7020-api` | `app.py` to `/opt/ax7020-api`, `empty.bin` to `/lib/firmware`, `ax7020-api.service` (`python3 -m uvicorn app:app`, port 8000, enabled) |
+| `ax7020-api-image` | core-image-minimal + the above + dropbear + the operator key. **No `ax7020-updater`**: with `IMAGE_URL` set it would kexec into itself forever. `INITRAMFS_MAXSIZE` raised to 512 MB, the rootfs is 138 MB uncompressed, 53 MB as `cpio.gz` |
+
+The whole build runs on **systemd** (`INIT_MANAGER = "systemd"` in
+`setup-build.sh`), so the maintenance image gained `ax7020-update.service`
+and lost nothing else. Two consequences worth knowing: root's home is `/root`
+under systemd, not `/home/root`, so `ax7020-ssh-key` installs to
+`${ROOT_HOME}`; and dropbear generates its host key on the first connection,
+which takes over 30 s on this CPU — raise `ConnectTimeout`.
+
+### Building and publishing
+
+```bash
+source yocto/setup-build.sh
+bitbake ax7020-api-image virtual/kernel          # API image + maintenance FIT
+tools/publish-image.sh AI-heimdall:/srv/ax7020-images
+```
+
+The board's address is whatever DHCP hands out; it changed from `.134` to
+`.144` after a lease expired. Look it up by hostname:
+
+```bash
+curl -s http://10.42.0.1:8000/get_all_network_clients | jq -r '.clients[] | select(.hostname=="ax7020") | .ip'
+```
+
+---
+
 ## Gotchas
 
 Every one of these cost real debugging time. They are the reason Stage 1 took as
@@ -971,6 +1052,16 @@ address mode, the PS reset does not reset the flash chip, and the BootROM
 reads with 3-byte addresses. Only a power cycle clears it. A soft reset after a
 *cleanly running* Linux worked, so the difference is whether the flash driver
 got to restore the chip.
+
+**14. Root's home moves with the init system.** poky puts root in `/home/root`
+under sysvinit and in `/root` under systemd. A recipe that installs
+`authorized_keys` to a literal path locks you out after the switch; use
+`${ROOT_HOME}`.
+
+**15. The board's IP is not stable.** A DHCP lease that expires while the
+board is off comes back as a different address. Scripts that hard-code
+`10.42.100.134` break silently; resolve the hostname through the inventory
+API or the DHCP server.
 
 **9. Netconsole occasionally drops input characters.** A mangled `sf write`
 becomes `Unknown command` and writes nothing. Check the echo of every

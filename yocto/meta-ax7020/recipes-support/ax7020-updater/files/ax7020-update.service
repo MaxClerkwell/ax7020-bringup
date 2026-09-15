@@ -1,0 +1,14 @@
+[Unit]
+Description=Fetch the latest AX7020 image and kexec into it
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# give dropbear and the DHCP lease a head start; if the update fails we stay here
+ExecStartPre=/bin/sleep 15
+ExecStart=/usr/bin/ax7020-update
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

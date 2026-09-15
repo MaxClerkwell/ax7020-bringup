@@ -55,6 +55,10 @@ MACHINE ?= "ax7020"
 DISTRO ?= "poky"
 PACKAGE_CLASSES ?= "package_ipk"
 
+# systemd on both images: the API is a systemd service, and one init system
+# for maintenance and development image keeps the recipes simple.
+INIT_MANAGER = "systemd"
+
 # 3 of 6 cores, so the workstation stays usable during builds
 BB_NUMBER_THREADS ?= "3"
 PARALLEL_MAKE ?= "-j 3"

@@ -56,10 +56,16 @@ Footprint on the board: uv 20 MB, Python 3.12 about 110 MB, packages a few
 MB. Fits the 1 GiB RAM, would never fit the 32 MiB flash — which is why the
 API image is fetched over the network and not flashed.
 
+## As an image
+
+Since 2026-09-15 the service ships in `ax7020-api-image` (recipe
+`yocto/meta-ax7020/recipes-support/ax7020-api`, unit `ax7020-api.service`),
+which the maintenance system fetches from the image server and starts with
+kexec. See the Stage 5 section of the top-level README. The manual setup
+above remains useful for trying a change without a Yocto build.
+
 ## Not done yet
 
 * No authentication. Anyone on the network can load a bitstream, and a
   bitstream with an AXI master can write anywhere in RAM.
-* No image recipe. The service should become part of a Yocto image that the
-  updater fetches (`latest.manifest`).
 * `empty.bin` is built from `bitstream/empty/`, a PS7-only design.

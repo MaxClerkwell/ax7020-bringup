@@ -10,8 +10,8 @@ SRC_URI = "file://authorized_keys"
 do_install() {
     # dropbear refuses the file if the directory or the file is writable by
     # anyone but the owner.
-    install -d -m 0700 ${D}/home/root/.ssh
-    install -m 0600 ${WORKDIR}/authorized_keys ${D}/home/root/.ssh/authorized_keys
+    install -d -m 0700 ${D}${ROOT_HOME}/.ssh
+    install -m 0600 ${WORKDIR}/authorized_keys ${D}${ROOT_HOME}/.ssh/authorized_keys
 }
 
-FILES:${PN} = "/home/root/.ssh /home/root/.ssh/authorized_keys"
+FILES:${PN} = "${ROOT_HOME}/.ssh ${ROOT_HOME}/.ssh/authorized_keys"
