@@ -24,7 +24,7 @@ checkpoints and the nine detours it took to get there, is on my blog:
 | 4 | Bitstream from an open toolchain | **done, 2026-09-10** — see [`docs/walkthrough-stage4-first-load.md`](docs/walkthrough-stage4-first-load.md) |
 | 5 | REST API that accepts a bitstream and loads it onto the FPGA | **done, 2026-09-15** — systemd service in `ax7020-api-image`, fetched from the image server; see [`api/`](api/README.md) and [`docs/walkthrough-stage5-manual.md`](docs/walkthrough-stage5-manual.md) |
 
-The five German walkthroughs under `docs/` are the session logs, detours included.
+The six German walkthroughs under `docs/` are the session logs, detours included.
 
 ## What is deliberately not here
 
@@ -176,6 +176,7 @@ docs/
   walkthrough-stage3.md              Linux session, in German
   walkthrough-stage4-first-load.md   first bitstream load, in German
   walkthrough-stage5-manual.md       the API, run by hand, in German
+  walkthrough-stage5-betrieb.md      image server, systemd images, cold-boot chain, in German
 tftp/                      files served to the board (boot.bin, u-boot.img)
 backup/                    factory QSPI dump
 yocto/
@@ -928,7 +929,10 @@ about writes issued through the CPU, debug access survived this.
 
 ## Stage 5 — the bitstream service as an image
 
-Reached 2026-09-15. `ax7020-api-image` is what the maintenance system fetches
+Reached 2026-09-15; the cold-boot chain from flash to a REST answer, with no
+hand on the board, is logged in
+[`docs/walkthrough-stage5-betrieb.md`](docs/walkthrough-stage5-betrieb.md).
+`ax7020-api-image` is what the maintenance system fetches
 from the image server and starts with kexec: Python 3.12, FastAPI, uvicorn,
 `uv`, and `ax7020-api.service` under systemd. First request answered 36 s
 after `kexec -e`. The first, hand-assembled version of the same thing is in
