@@ -969,8 +969,15 @@ bitbake ax7020-api-image virtual/kernel          # API image + maintenance FIT
 tools/publish-image.sh AI-heimdall:/srv/ax7020-images
 ```
 
+Writing a new U-Boot or FIT from the running Linux, no JTAG, no jumper:
+
+```bash
+tools/flash-fit.sh <board-ip> tftp/fitImage        # mtd3, the FIT partition
+tools/flash-fit.sh <board-ip> tftp/u-boot.img 1    # mtd1, U-Boot proper
+```
+
 The board's address is whatever DHCP hands out; it changed from `.134` to
-`.144` after a lease expired. Look it up by hostname:
+`.144` to `.149` to `.152` over one afternoon of reboots. Look it up by hostname:
 
 ```bash
 curl -s http://10.42.0.1:8000/get_all_network_clients | jq -r '.clients[] | select(.hostname=="ax7020") | .ip'
@@ -1062,6 +1069,19 @@ under sysvinit and in `/root` under systemd. A recipe that installs
 board is off comes back as a different address. Scripts that hard-code
 `10.42.100.134` break silently; resolve the hostname through the inventory
 API or the DHCP server.
+
+**16. A powered-off board is not powered off while the FT232H is plugged in.**
+The adapter holds TMS high and feeds the 3.3 V rail through the JTAG pins'
+protection diodes — the same effect that let the chain be scanned "without
+power" on day one. The flash never loses its state, and a BootROM that parked
+on a soft reset keeps parking after a "power cycle". Unplug the adapter's USB
+before cutting the board's power.
+
+**17. `bootcmd` reads a fixed size; the FIT must fit into it.** The compiled-in
+command read 16 MiB; the systemd maintenance image is 21 MB. U-Boot then
+reports `Bad FIT kernel image format! (err=-22)` and stops at its prompt, where
+it is unreachable on a switched network (gotcha in Stage 3). Now 24 MiB
+(`sf read 0x2000000 0x340000 0x1800000`); the partition allows 28.75 MiB.
 
 **9. Netconsole occasionally drops input characters.** A mangled `sf write`
 becomes `Unknown command` and writes nothing. Check the echo of every

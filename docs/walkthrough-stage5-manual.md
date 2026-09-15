@@ -173,3 +173,22 @@ Freigabe), Neustart, zusehen.
   leeres Design mit PS7 ist der Ersatz.
 * **Drei Stände desselben Systems sind zu viele.** Flash, Server, RAM sahen
   gleich aus. Ein Build-Stempel im Image kommt ins nächste Rezept.
+
+
+---
+
+## Nachtrag 15.09.: Betrieb
+
+Alles aus Abschnitt 6 ist inzwischen eingebaut, siehe Stage 2 und Stage 5 in
+der README: Image-Server auf dem Router, `ax7020-update.service` im
+Wartungssystem, `ax7020-api-image` mit systemd und `ax7020-api.service`.
+Auf dem Weg dorthin drei Dinge, die nur am Gerät sichtbar wurden:
+
+* Roots Home ist unter systemd `/root`, das Schlüssel-Rezept installierte nach
+  `/home/root` und sperrte aus. Gotcha 14.
+* Ein Power-Cycle mit angestecktem JTAG-Adapter ist keiner: der FT232H hält die
+  3,3-V-Schiene über TMS am Leben, der Flash behält seinen Zustand. Gotcha 16.
+* Das systemd-Wartungsimage ist 21 MB, `bootcmd` las 16 MiB. U-Boot blieb mit
+  `Bad FIT kernel image format` am Prompt stehen. Gotcha 17, behoben mit 24 MiB
+  und einem per JTAG heiß geladenen U-Boot, das dann sein eigenes Image aus
+  Linux heraus in die Partition geschrieben hat.
